@@ -1,20 +1,43 @@
 --[[
-    START SCREEN: "Join our Discord"
-    Animated black / gray background with a bright white sheen,
-    pure white title and a glowing "Join Discord Server" button.
+    KEY SCREEN: "Enter your key"
+    Same black / gray animated theme with a bright white sheen.
+    As soon as the correct key is typed or pasted, the main script
+    starts automatically - no button press needed.
+    The key is asked on every launch (it is never saved).
 ]]
 
-local DISCORD_LINK = "https://discord.gg/your-invite" -- << put your invite link here
-local DISCORD_CODE = "your-invite"                     -- << only the code after discord.gg/
+---------------------------------------------------------------------
+-- SETTINGS
+---------------------------------------------------------------------
+local VALID_KEYS      = { "Phantom" } -- << your key (case matters)
+local KEY_URL         = ""  -- optional: raw link to a text file with keys (one per line)
+local MAIN_SCRIPT_URL = ""  -- optional: raw link to your main script (loadstring)
 
+---------------------------------------------------------------------
+-- MAIN SCRIPT (runs automatically after a correct key)
+---------------------------------------------------------------------
+local function loadMainScript()
+    if MAIN_SCRIPT_URL ~= "" then
+        local ok, err = pcall(function()
+            loadstring(game:HttpGet(MAIN_SCRIPT_URL))()
+        end)
+        if not ok then
+            warn("[KeyScreen] Main script error: " .. tostring(err))
+        end
+        return
+    end
+
+    -- >>> or put the code of your main script here <<<
+    print("[KeyScreen] Key accepted - main script is running")
+end
+
+---------------------------------------------------------------------
+-- services & helpers
+---------------------------------------------------------------------
 local Players      = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService   = game:GetService("RunService")
-local HttpService  = game:GetService("HttpService")
 
----------------------------------------------------------------------
--- helpers
----------------------------------------------------------------------
 local function new(class, props, parent)
     local obj = Instance.new(class)
     for k, v in pairs(props) do
@@ -30,6 +53,10 @@ local function tween(obj, time, props)
     return t
 end
 
+local function clean(s)
+    return (tostring(s):gsub("%s+", ""))
+end
+
 local function getGuiParent()
     if gethui then
         local ok, hui = pcall(gethui)
@@ -42,44 +69,38 @@ local function getGuiParent()
     return Players.LocalPlayer:WaitForChild("PlayerGui")
 end
 
-local function copyToClipboard(text)
-    local fn = setclipboard or toclipboard or (Clipboard and Clipboard.set)
-    if fn then
-        return pcall(fn, text)
-    end
-    return false
+---------------------------------------------------------------------
+-- key checking
+---------------------------------------------------------------------
+local keys = {}
+for _, k in ipairs(VALID_KEYS) do
+    keys[clean(k)] = true
 end
 
--- opens the invite in the Discord desktop app (works in most executors)
-local function openInDiscordApp(code)
-    local req = (syn and syn.request) or (http and http.request) or http_request or request
-    if not req then return false end
-    return pcall(function()
-        req({
-            Url = "http://127.0.0.1:6463/rpc?v=1",
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["Origin"] = "https://discord.com",
-            },
-            Body = HttpService:JSONEncode({
-                cmd = "INVITE_BROWSER",
-                args = { code = code },
-                nonce = HttpService:GenerateGUID(false),
-            }),
-        })
-    end)
+if KEY_URL ~= "" then
+    local ok, body = pcall(function() return game:HttpGet(KEY_URL) end)
+    if ok and type(body) == "string" then
+        for line in body:gmatch("[^\r\n]+") do
+            local k = clean(line)
+            if k ~= "" then keys[k] = true end
+        end
+    end
+end
+
+local function isValidKey(text)
+    local k = clean(text)
+    return k ~= "" and keys[k] == true
 end
 
 ---------------------------------------------------------------------
 -- GUI
 ---------------------------------------------------------------------
 local parent = getGuiParent()
-local old = parent:FindFirstChild("DiscordStartScreen")
+local old = parent:FindFirstChild("KeyScreen")
 if old then old:Destroy() end
 
 local gui = new("ScreenGui", {
-    Name = "DiscordStartScreen",
+    Name = "KeyScreen",
     IgnoreGuiInset = true,
     ResetOnSpawn = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -103,7 +124,7 @@ local bgGradient = new("UIGradient", {
     }),
 }, bg)
 
--- bright white sheen sliding over the background (makes the white clearly visible)
+-- bright white sheen
 local sheen = new("Frame", {
     Size = UDim2.fromScale(1, 1),
     BackgroundColor3 = Color3.new(1, 1, 1),
@@ -121,28 +142,70 @@ local sheenGradient = new("UIGradient", {
 -- title
 local title = new("TextLabel", {
     AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.fromScale(0.5, 0.42),
-    Size = UDim2.new(0.9, 0, 0, 100),
+    Position = UDim2.new(0.5, 0, 0.5, -120),
+    Size = UDim2.new(0.9, 0, 0, 90),
     BackgroundTransparency = 1,
-    Text = "Join our Discord",
+    Text = "Enter your key",
     Font = Enum.Font.GothamBlack,
     TextColor3 = Color3.new(1, 1, 1),
     TextScaled = true,
     TextTransparency = 1,
     ZIndex = 3,
 }, bg)
-new("UITextSizeConstraint", { MaxTextSize = 72 }, title)
+new("UITextSizeConstraint", { MaxTextSize = 68 }, title)
 local titleStroke = new("UIStroke", {
     Color = Color3.new(0, 0, 0),
     Thickness = 2.5,
     Transparency = 1,
 }, title)
 
--- button (bottom)
+-- key box
+local box = new("TextBox", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.new(0.85, 0, 0, 60),
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "",
+    PlaceholderText = "Paste your key here",
+    PlaceholderColor3 = Color3.fromRGB(170, 170, 178),
+    TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 20,
+    TextTransparency = 1,
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    ZIndex = 3,
+}, bg)
+new("UISizeConstraint", { MaxSize = Vector2.new(420, 60) }, box)
+new("UICorner", { CornerRadius = UDim.new(1, 0) }, box)
+local boxStroke = new("UIStroke", {
+    Color = Color3.new(1, 1, 1),
+    Thickness = 2,
+    Transparency = 1,
+    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+}, box)
+
+-- status line
+local STATUS_DEFAULT = "Paste your key - it unlocks automatically"
+local status = new("TextLabel", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 58),
+    Size = UDim2.new(0.9, 0, 0, 28),
+    BackgroundTransparency = 1,
+    Text = STATUS_DEFAULT,
+    Font = Enum.Font.Gotham,
+    TextSize = 16,
+    TextColor3 = Color3.fromRGB(215, 215, 222),
+    TextTransparency = 1,
+    ZIndex = 3,
+}, bg)
+
+-- Key button (bottom)
 local btn = new("TextButton", {
     AnchorPoint = Vector2.new(0.5, 1),
     Position = UDim2.new(0.5, 0, 1, -70),
-    Size = UDim2.fromOffset(300, 60),
+    Size = UDim2.fromOffset(320, 60),
     BackgroundTransparency = 1,
     Text = "",
     AutoButtonColor = false,
@@ -153,6 +216,7 @@ local btnStroke = new("UIStroke", {
     Color = Color3.new(1, 1, 1),
     Thickness = 2,
     Transparency = 1,
+    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 }, btn)
 
 local fill = new("Frame", {
@@ -171,33 +235,16 @@ local btnGradient = new("UIGradient", {
     }),
 }, fill)
 
-local label = new("TextLabel", {
+local btnLabel = new("TextLabel", {
     Size = UDim2.fromScale(1, 1),
     BackgroundTransparency = 1,
-    Text = "Join Discord Server",
+    Text = "Key",
     Font = Enum.Font.GothamBold,
-    TextSize = 20,
+    TextSize = 22,
     TextColor3 = Color3.new(1, 1, 1),
     TextTransparency = 1,
     ZIndex = 4,
 }, btn)
-
--- small close button (top right) so the screen doesn't block your script
-local closeBtn = new("TextButton", {
-    AnchorPoint = Vector2.new(1, 0),
-    Position = UDim2.new(1, -24, 0, 24),
-    Size = UDim2.fromOffset(40, 40),
-    BackgroundColor3 = Color3.new(0, 0, 0),
-    BackgroundTransparency = 0.45,
-    Text = "X",
-    Font = Enum.Font.GothamBold,
-    TextSize = 18,
-    TextColor3 = Color3.new(1, 1, 1),
-    AutoButtonColor = true,
-    ZIndex = 5,
-}, bg)
-new("UICorner", { CornerRadius = UDim.new(1, 0) }, closeBtn)
-new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1.5, Transparency = 0.4 }, closeBtn)
 
 ---------------------------------------------------------------------
 -- animation
@@ -215,43 +262,115 @@ end)
 -- intro
 tween(title, 1.0, { TextTransparency = 0 })
 tween(titleStroke, 1.0, { Transparency = 0.3 })
-task.delay(0.4, function()
+task.delay(0.3, function()
+    tween(box, 0.8, { BackgroundTransparency = 0.35, TextTransparency = 0 })
+    tween(boxStroke, 0.8, { Transparency = 0.1 })
+    tween(status, 0.8, { TextTransparency = 0 })
+end)
+task.delay(0.6, function()
     tween(fill, 0.8, { BackgroundTransparency = 0 })
-    tween(label, 0.8, { TextTransparency = 0 })
+    tween(btnLabel, 0.8, { TextTransparency = 0 })
     tween(btnStroke, 0.8, { Transparency = 0.15 })
 end)
 
--- hover
+---------------------------------------------------------------------
+-- key logic
+---------------------------------------------------------------------
+local unlocked = false
+
+local function shake(obj)
+    local base = obj.Position
+    for i = 1, 6 do
+        obj.Position = base + UDim2.fromOffset(i % 2 == 0 and -9 or 9, 0)
+        task.wait(0.04)
+    end
+    obj.Position = base
+end
+
+local function showInvalid()
+    status.Text = "Invalid key - try again"
+    status.TextColor3 = Color3.fromRGB(255, 90, 90)
+    boxStroke.Color = Color3.fromRGB(255, 90, 90)
+    task.spawn(shake, box)
+    task.delay(2.5, function()
+        if not unlocked then
+            status.Text = STATUS_DEFAULT
+            status.TextColor3 = Color3.fromRGB(215, 215, 222)
+            boxStroke.Color = Color3.new(1, 1, 1)
+        end
+    end)
+end
+
+local function unlock(key)
+    if unlocked then return end
+    unlocked = true
+
+    box.TextEditable = false
+    box:ReleaseFocus()
+    status.Text = "Key accepted!"
+    status.TextColor3 = Color3.fromRGB(90, 255, 150)
+    boxStroke.Color = Color3.fromRGB(90, 255, 150)
+
+    task.wait(0.8)
+
+    -- fade everything out
+    for _, d in ipairs(gui:GetDescendants()) do
+        if d:IsA("Frame") or d:IsA("TextBox") or d:IsA("TextButton") or d:IsA("TextLabel") then
+            tween(d, 0.5, { BackgroundTransparency = 1 })
+        end
+        if d:IsA("TextBox") or d:IsA("TextButton") or d:IsA("TextLabel") then
+            tween(d, 0.5, { TextTransparency = 1 })
+        end
+        if d:IsA("UIStroke") then
+            tween(d, 0.5, { Transparency = 1 })
+        end
+    end
+    task.wait(0.6)
+
+    conn:Disconnect()
+    gui:Destroy()
+
+    loadMainScript() -- starts by itself
+end
+
+-- correct key typed / pasted -> instantly unlock
+box:GetPropertyChangedSignal("Text"):Connect(function()
+    if not unlocked and isValidKey(box.Text) then
+        task.spawn(unlock, box.Text)
+    end
+end)
+
+-- wrong key when the box loses focus / Enter is pressed
+box.FocusLost:Connect(function()
+    if unlocked then return end
+    if clean(box.Text) ~= "" and not isValidKey(box.Text) then
+        showInvalid()
+    end
+end)
+
+-- focus glow
+box.Focused:Connect(function()
+    if not unlocked then tween(boxStroke, 0.2, { Thickness = 3, Transparency = 0 }) end
+end)
+box.FocusLost:Connect(function()
+    if not unlocked then tween(boxStroke, 0.2, { Thickness = 2, Transparency = 0.1 }) end
+end)
+
+---------------------------------------------------------------------
+-- Key button
+---------------------------------------------------------------------
 btn.MouseEnter:Connect(function()
-    tween(btn, 0.2, { Size = UDim2.fromOffset(322, 64) })
+    tween(btn, 0.2, { Size = UDim2.fromOffset(342, 64) })
     tween(btnStroke, 0.2, { Thickness = 3, Transparency = 0 })
 end)
 btn.MouseLeave:Connect(function()
-    tween(btn, 0.2, { Size = UDim2.fromOffset(300, 60) })
+    tween(btn, 0.2, { Size = UDim2.fromOffset(320, 60) })
     tween(btnStroke, 0.2, { Thickness = 2, Transparency = 0.15 })
 end)
 
--- click
-local busy = false
+-- clicking "Key" jumps straight into the key box
 btn.MouseButton1Click:Connect(function()
-    if busy then return end
-    busy = true
-
-    local copied = copyToClipboard(DISCORD_LINK)
-    openInDiscordApp(DISCORD_CODE)
-    label.Text = copied and "Link copied!" or DISCORD_LINK
-
-    task.delay(2.5, function()
-        if label.Parent then
-            label.Text = "Join Discord Server"
-        end
-        busy = false
-    end)
-end)
-
--- close
-closeBtn.MouseButton1Click:Connect(function()
-    conn:Disconnect()
-    gui:Destroy()
-    -- >> https://discord.gg/s6nKDC5HUg <<<
+    if not unlocked then
+        box:CaptureFocus()
+    end
 end)
